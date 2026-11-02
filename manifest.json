@@ -1,0 +1,29 @@
+{
+  "name": "Điểm Danh CLB Vovinam Lạc Hồng",
+  "short_name": "Vovinam Lạc Hồng",
+  "description": "Ứng dụng điểm danh và quản lý võ sinh CLB Vovinam Lạc Hồng (Thứ 2-4-6 • 17h30-19h00)",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#f4f8fb",
+  "theme_color": "#0284c7",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "apple-touch-icon.png",
+      "sizes": "180x180",
+      "type": "image/png"
+    },
+    {
+      "src": "icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
