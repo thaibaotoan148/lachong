@@ -260,6 +260,8 @@
           <button type="button" class="filter-pill" data-filter="present">Có mặt</button>
           <button type="button" class="filter-pill" data-filter="excused">Có phép</button>
           <button type="button" class="filter-pill" data-filter="absent">Vắng</button>
+          <button type="button" class="filter-pill" data-filter="unpaid">Chưa đóng HP</button>
+          <button type="button" class="filter-pill" data-filter="paid">Đã đóng HP</button>
         </div>
       </div>
 
@@ -318,9 +320,18 @@
             </div>
           </div>
 
-          <div class="form-group">
-            <label for="memberPhone">SĐT Phụ huynh / Liên hệ</label>
-            <input type="tel" id="memberPhone" placeholder="Số điện thoại liên hệ..." autocomplete="off" />
+          <div class="form-row">
+            <div class="form-group">
+              <label for="memberPhone">SĐT Phụ huynh / Liên hệ</label>
+              <input type="tel" id="memberPhone" placeholder="Số điện thoại liên hệ..." autocomplete="off" />
+            </div>
+            <div class="form-group">
+              <label for="memberTuition">Tình trạng học phí</label>
+              <select id="memberTuition">
+                <option value="unpaid">Chưa đóng</option>
+                <option value="paid">Đã đóng</option>
+              </select>
+            </div>
           </div>
 
           <button type="submit" class="btn btn-primary btn-block">
