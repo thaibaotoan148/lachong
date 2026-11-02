@@ -353,6 +353,12 @@ function getFilteredMembers() {
 
     if (!matchesSearch) return false;
 
+    if (state.statusFilter === 'paid') {
+      return m.tuition === 'paid';
+    }
+    if (state.statusFilter === 'unpaid') {
+      return m.tuition !== 'paid';
+    }
     if (state.statusFilter !== 'all' && state.currentView === 'attendance') {
       const st = sessionRecord[m.id]?.status || '';
       return st === state.statusFilter;
@@ -458,8 +464,21 @@ function buildBeltBadgeHtml(belt = 'Tự vệ nhập môn') {
 }
 
 function buildMetaChipsHtml(m) {
+  const isPaid = m.tuition === 'paid';
+  const tuitionBadgeHtml = `
+    <button
+      type="button"
+      class="tuition-badge ${isPaid ? 'tuition-paid' : 'tuition-unpaid'}"
+      data-action="toggle-tuition"
+      data-id="${escapeHtml(m.id)}"
+      title="Bấm để đổi nhanh tình trạng học phí"
+    >
+      ${isPaid ? '✓ Đã đóng HP' : '⏳ Chưa đóng HP'}
+    </button>
+  `;
   return `
     ${buildBeltBadgeHtml(m.belt || 'Tự vệ nhập môn')}
+    ${tuitionBadgeHtml}
     <span class="meta-item meta-id">Mã ĐD: <strong>${escapeHtml(m.studentId || 'Chưa cập nhật')}</strong></span>
     ${m.phone ? `<span class="meta-item">SĐT: <strong>${escapeHtml(m.phone)}</strong></span>` : ''}
   `;
@@ -701,6 +720,13 @@ function renderMemberList() {
                   <div class="edit-field">
                     <label>SĐT Phụ huynh / Liên hệ</label>
                     <input type="tel" value="${escapeHtml(m.phone || '')}" data-action="edit-field" data-field="phone" data-id="${escapeHtml(m.id)}" placeholder="Nhập SĐT..." />
+                  </div>
+                  <div class="edit-field">
+                    <label>Tình trạng học phí</label>
+                    <select data-action="edit-field" data-field="tuition" data-id="${escapeHtml(m.id)}">
+                      <option value="unpaid" ${m.tuition !== 'paid' ? 'selected' : ''}>Chưa đóng</option>
+                      <option value="paid" ${m.tuition === 'paid' ? 'selected' : ''}>Đã đóng</option>
+                    </select>
                   </div>
                   <div class="edit-actions-row">
                     <span class="auto-save-badge">✓ Mọi chỉnh sửa được lưu tự động</span>
@@ -951,7 +977,8 @@ function buildXlsxBlob(rows) {
     <col min="4" max="4" width="18" customWidth="1"/>
     <col min="5" max="5" width="18" customWidth="1"/>
     <col min="6" max="6" width="18" customWidth="1"/>
-    <col min="7" max="7" width="28" customWidth="1"/>
+    <col min="7" max="7" width="18" customWidth="1"/>
+    <col min="8" max="8" width="28" customWidth="1"/>
   </cols>
   <sheetData>${sheetRowsXml}</sheetData>
 </worksheet>`;
@@ -1061,7 +1088,8 @@ function exportToXLSX() {
       { v: 'Mã định danh', s: 2 },
       { v: 'Cấp đai', s: 2 },
       { v: 'SĐT Phụ huynh', s: 2 },
-      { v: 'Trạng thái', s: 2 },
+      { v: 'Tình trạng học phí', s: 2 },
+      { v: 'Trạng thái điểm danh', s: 2 },
       { v: 'Ghi chú', s: 2 },
     ],
   ];
@@ -1074,6 +1102,7 @@ function exportToXLSX() {
       { v: m.studentId || '', s: 3 },
       { v: m.belt || '', s: 3 },
       { v: m.phone || '', s: 3 },
+      { v: m.tuition === 'paid' ? 'Đã đóng' : 'Chưa đóng', s: 3 },
       { v: statusMap[rec.status || ''], s: 3 },
       { v: rec.note || '', s: 3 },
     ]);
@@ -1169,6 +1198,7 @@ function initEvents() {
     const studentIdInput = document.getElementById('memberStudentId');
     const beltSelect = document.getElementById('memberBelt');
     const phoneInput = document.getElementById('memberPhone');
+    const tuitionSelect = document.getElementById('memberTuition');
 
     const name = nameInput.value.trim();
     if (!name) return;
@@ -1179,6 +1209,7 @@ function initEvents() {
       studentId: studentIdInput ? studentIdInput.value.trim() : '',
       belt: beltSelect.value,
       phone: phoneInput.value.trim(),
+      tuition: tuitionSelect ? tuitionSelect.value : 'unpaid',
     };
 
     state.members.push(newMember);
@@ -1187,6 +1218,7 @@ function initEvents() {
     nameInput.value = '';
     if (studentIdInput) studentIdInput.value = '';
     phoneInput.value = '';
+    if (tuitionSelect) tuitionSelect.value = 'unpaid';
     nameInput.focus();
 
     renderAll();
@@ -1217,6 +1249,7 @@ function initEvents() {
         studentId: parts[1] || '',
         belt: 'Tự vệ nhập môn',
         phone: parts[2] || '',
+        tuition: 'unpaid',
       });
       addedCount++;
     });
@@ -1272,6 +1305,22 @@ function initEvents() {
       return;
     }
 
+    const tuitionBtn = e.target.closest('[data-action="toggle-tuition"]');
+    if (tuitionBtn) {
+      const id = tuitionBtn.dataset.id;
+      const member = state.members.find((m) => m.id === id);
+      if (member) {
+        member.tuition = member.tuition === 'paid' ? 'unpaid' : 'paid';
+        saveMembers();
+        renderMemberList();
+        renderDetailedStatsView();
+        showToast(
+          `${member.name}: ${member.tuition === 'paid' ? '✓ Đã đóng học phí' : '⏳ Chưa đóng học phí'}`
+        );
+      }
+      return;
+    }
+
     const toggleEditBtn = e.target.closest('[data-action="toggle-edit"]');
     if (toggleEditBtn) {
       const id = toggleEditBtn.dataset.id;
@@ -1318,6 +1367,12 @@ function initEvents() {
       if (editSelect.dataset.field === 'belt') {
         renderMemberList();
         showToast('Đã cập nhật cấp đai và sắp xếp lại danh sách!');
+      } else if (editSelect.dataset.field === 'tuition') {
+        renderMemberList();
+        renderDetailedStatsView();
+        showToast(
+          `Đã cập nhật học phí: ${editSelect.value === 'paid' ? '✓ Đã đóng' : '⏳ Chưa đóng'}!`
+        );
       }
     }
   });

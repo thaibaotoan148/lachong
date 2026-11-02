@@ -893,6 +893,41 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
+/* Interactive Tuition Status Badge */
+.tuition-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-family: inherit;
+  font-size: 0.76rem;
+  font-weight: 700;
+  padding: 3px 10px;
+  border-radius: 7px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  user-select: none;
+}
+
+.tuition-badge.tuition-paid {
+  background: var(--present-bg);
+  color: var(--present-text);
+  border: 1px solid var(--present-border);
+}
+
+.tuition-badge.tuition-paid:hover {
+  background: #d1fae5;
+}
+
+.tuition-badge.tuition-unpaid {
+  background: var(--absent-bg);
+  color: var(--absent-text);
+  border: 1px solid var(--absent-border);
+}
+
+.tuition-badge.tuition-unpaid:hover {
+  background: #ffe4e6;
+}
+
 /* Realistic Vovinam Belt Badge with Stripes */
 .vovinam-belt-badge {
   display: inline-flex;
