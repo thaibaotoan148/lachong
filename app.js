@@ -81,6 +81,38 @@ function formatDateVN(isoStr) {
   return `${d}/${m}/${y}`;
 }
 
+function getMonthKey(isoStr = state.selectedDate) {
+  const [y, m] = (isoStr || getTodayISO()).split('-');
+  if (!y || !m) return getTodayISO().slice(0, 7);
+  return `${y}-${m}`;
+}
+
+function formatMonthShortVN(isoStr = state.selectedDate) {
+  const [y, m] = (isoStr || getTodayISO()).split('-');
+  if (!y || !m) return '';
+  return `T${Number(m)}/${y}`;
+}
+
+function getMemberTuitionStatus(member, monthKey = getMonthKey()) {
+  if (!member) return 'unpaid';
+  if (member.tuitionByMonth && typeof member.tuitionByMonth === 'object') {
+    return member.tuitionByMonth[monthKey] === 'paid' ? 'paid' : 'unpaid';
+  }
+  if (member.tuition === 'paid' && monthKey === getTodayISO().slice(0, 7)) {
+    return 'paid';
+  }
+  return 'unpaid';
+}
+
+function setMemberTuitionStatus(member, status, monthKey = getMonthKey()) {
+  if (!member) return;
+  if (!member.tuitionByMonth || typeof member.tuitionByMonth !== 'object') {
+    member.tuitionByMonth = {};
+  }
+  member.tuitionByMonth[monthKey] = status === 'paid' ? 'paid' : 'unpaid';
+  delete member.tuition;
+}
+
 function addDaysISO(isoStr, days) {
   const dt = parseISODate(isoStr);
   dt.setDate(dt.getDate() + days);
@@ -354,10 +386,10 @@ function getFilteredMembers() {
     if (!matchesSearch) return false;
 
     if (state.statusFilter === 'paid') {
-      return m.tuition === 'paid';
+      return getMemberTuitionStatus(m) === 'paid';
     }
     if (state.statusFilter === 'unpaid') {
-      return m.tuition !== 'paid';
+      return getMemberTuitionStatus(m) !== 'paid';
     }
     if (state.statusFilter !== 'all' && state.currentView === 'attendance') {
       const st = sessionRecord[m.id]?.status || '';
@@ -400,7 +432,11 @@ function setAttendanceNote(memberId, note) {
 function updateMemberField(memberId, field, value) {
   const member = state.members.find((m) => m.id === memberId);
   if (!member) return;
-  member[field] = value;
+  if (field === 'tuition') {
+    setMemberTuitionStatus(member, value);
+  } else {
+    member[field] = value;
+  }
   saveMembers();
 
   const card = document.querySelector(`.student-card[data-id="${CSS.escape(memberId)}"]`);
@@ -464,16 +500,17 @@ function buildBeltBadgeHtml(belt = 'Tự vệ nhập môn') {
 }
 
 function buildMetaChipsHtml(m) {
-  const isPaid = m.tuition === 'paid';
+  const isPaid = getMemberTuitionStatus(m) === 'paid';
+  const monthLabel = formatMonthShortVN(state.selectedDate);
   const tuitionBadgeHtml = `
     <button
       type="button"
       class="tuition-badge ${isPaid ? 'tuition-paid' : 'tuition-unpaid'}"
       data-action="toggle-tuition"
       data-id="${escapeHtml(m.id)}"
-      title="Bấm để đổi nhanh tình trạng học phí"
+      title="Bấm để đổi nhanh tình trạng học phí ${monthLabel} (Sang tháng mới tự động reset)"
     >
-      ${isPaid ? '✓ Đã đóng HP' : '⏳ Chưa đóng HP'}
+      ${isPaid ? `✓ Đã đóng HP (${monthLabel})` : `⏳ Chưa đóng HP (${monthLabel})`}
     </button>
   `;
   return `
@@ -722,10 +759,10 @@ function renderMemberList() {
                     <input type="tel" value="${escapeHtml(m.phone || '')}" data-action="edit-field" data-field="phone" data-id="${escapeHtml(m.id)}" placeholder="Nhập SĐT..." />
                   </div>
                   <div class="edit-field">
-                    <label>Tình trạng học phí</label>
+                    <label>Tình trạng học phí (${escapeHtml(formatMonthShortVN(state.selectedDate))})</label>
                     <select data-action="edit-field" data-field="tuition" data-id="${escapeHtml(m.id)}">
-                      <option value="unpaid" ${m.tuition !== 'paid' ? 'selected' : ''}>Chưa đóng</option>
-                      <option value="paid" ${m.tuition === 'paid' ? 'selected' : ''}>Đã đóng</option>
+                      <option value="unpaid" ${getMemberTuitionStatus(m) !== 'paid' ? 'selected' : ''}>Chưa đóng</option>
+                      <option value="paid" ${getMemberTuitionStatus(m) === 'paid' ? 'selected' : ''}>Đã đóng</option>
                     </select>
                   </div>
                   <div class="edit-actions-row">
@@ -1088,7 +1125,7 @@ function exportToXLSX() {
       { v: 'Mã định danh', s: 2 },
       { v: 'Cấp đai', s: 2 },
       { v: 'SĐT Phụ huynh', s: 2 },
-      { v: 'Tình trạng học phí', s: 2 },
+      { v: `Học phí (${formatMonthShortVN(state.selectedDate)})`, s: 2 },
       { v: 'Trạng thái điểm danh', s: 2 },
       { v: 'Ghi chú', s: 2 },
     ],
@@ -1102,7 +1139,7 @@ function exportToXLSX() {
       { v: m.studentId || '', s: 3 },
       { v: m.belt || '', s: 3 },
       { v: m.phone || '', s: 3 },
-      { v: m.tuition === 'paid' ? 'Đã đóng' : 'Chưa đóng', s: 3 },
+      { v: getMemberTuitionStatus(m) === 'paid' ? 'Đã đóng' : 'Chưa đóng', s: 3 },
       { v: statusMap[rec.status || ''], s: 3 },
       { v: rec.note || '', s: 3 },
     ]);
@@ -1203,13 +1240,16 @@ function initEvents() {
     const name = nameInput.value.trim();
     if (!name) return;
 
+    const initialTuition = tuitionSelect ? tuitionSelect.value : 'unpaid';
     const newMember = {
       id: 'lh_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
       name,
       studentId: studentIdInput ? studentIdInput.value.trim() : '',
       belt: beltSelect.value,
       phone: phoneInput.value.trim(),
-      tuition: tuitionSelect ? tuitionSelect.value : 'unpaid',
+      tuitionByMonth: {
+        [getMonthKey()]: initialTuition === 'paid' ? 'paid' : 'unpaid',
+      },
     };
 
     state.members.push(newMember);
@@ -1249,7 +1289,7 @@ function initEvents() {
         studentId: parts[1] || '',
         belt: 'Tự vệ nhập môn',
         phone: parts[2] || '',
-        tuition: 'unpaid',
+        tuitionByMonth: {},
       });
       addedCount++;
     });
@@ -1310,12 +1350,18 @@ function initEvents() {
       const id = tuitionBtn.dataset.id;
       const member = state.members.find((m) => m.id === id);
       if (member) {
-        member.tuition = member.tuition === 'paid' ? 'unpaid' : 'paid';
+        const nextStatus = getMemberTuitionStatus(member) === 'paid' ? 'unpaid' : 'paid';
+        setMemberTuitionStatus(member, nextStatus);
         saveMembers();
         renderMemberList();
         renderDetailedStatsView();
+        const monthLabel = formatMonthShortVN(state.selectedDate);
         showToast(
-          `${member.name}: ${member.tuition === 'paid' ? '✓ Đã đóng học phí' : '⏳ Chưa đóng học phí'}`
+          `${member.name}: ${
+            nextStatus === 'paid'
+              ? `✓ Đã đóng học phí (${monthLabel})`
+              : `⏳ Chưa đóng học phí (${monthLabel})`
+          }`
         );
       }
       return;
@@ -1370,8 +1416,9 @@ function initEvents() {
       } else if (editSelect.dataset.field === 'tuition') {
         renderMemberList();
         renderDetailedStatsView();
+        const monthLabel = formatMonthShortVN(state.selectedDate);
         showToast(
-          `Đã cập nhật học phí: ${editSelect.value === 'paid' ? '✓ Đã đóng' : '⏳ Chưa đóng'}!`
+          `Đã cập nhật học phí ${monthLabel}: ${editSelect.value === 'paid' ? '✓ Đã đóng' : '⏳ Chưa đóng'}!`
         );
       }
     }
