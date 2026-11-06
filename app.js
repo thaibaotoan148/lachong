@@ -40,6 +40,23 @@ function getBeltRank(belt) {
   return idx === -1 ? 0 : idx;
 }
 
+function getMemberMonthlyEval(member, monthKey = state.selectedMonth) {
+  if (!member || !member.monthlyEvals || typeof member.monthlyEvals !== 'object') {
+    return '';
+  }
+  return member.monthlyEvals[monthKey] || '';
+}
+
+function setMemberMonthlyEval(memberId, evalText, monthKey = state.selectedMonth) {
+  const member = state.members.find((m) => m.id === memberId);
+  if (!member) return;
+  if (!member.monthlyEvals || typeof member.monthlyEvals !== 'object') {
+    member.monthlyEvals = {};
+  }
+  member.monthlyEvals[monthKey] = evalText;
+  saveMembers();
+}
+
 function sortMembersByBelt(list) {
   return list.sort((a, b) => {
     const rankDiff = getBeltRank(a.belt) - getBeltRank(b.belt);
@@ -55,6 +72,8 @@ function cleanSampleMembers(list) {
 
 let state = {
   selectedDate: getTodayISO(),
+  selectedMonth: getTodayISO().slice(0, 7), // 'YYYY-MM'
+  statsMode: 'daily', // 'daily' | 'monthly'
   hasClassToday: true,
   currentView: 'attendance', // 'attendance' | 'members' | 'add' | 'stats'
   searchQuery: '',
@@ -785,57 +804,311 @@ function renderMemberList() {
 }
 
 function renderDetailedStatsView() {
+  const dailyWrap = document.getElementById('statsDailyViewWrap');
+  const monthlyWrap = document.getElementById('statsMonthlyViewWrap');
+  const btnDaily = document.getElementById('btnStatsDailyMode');
+  const btnMonthly = document.getElementById('btnStatsMonthlyMode');
+  const dailyDateLabel = document.getElementById('statsDailyDateLabel');
+
+  if (dailyDateLabel) {
+    dailyDateLabel.textContent = formatDateVN(state.selectedDate);
+  }
+
+  if (btnDaily && btnMonthly) {
+    btnDaily.classList.toggle('active', state.statsMode === 'daily');
+    btnMonthly.classList.toggle('active', state.statsMode === 'monthly');
+  }
+
+  if (dailyWrap && monthlyWrap) {
+    dailyWrap.classList.toggle('hidden', state.statsMode !== 'daily');
+    monthlyWrap.classList.toggle('hidden', state.statsMode !== 'monthly');
+  }
+
+  // 1. Daily View
   const grid = document.getElementById('reportSummaryGrid');
   const label = document.getElementById('statsSessionLabel');
-  if (!grid || !state.hasClassToday) return;
+  if (grid && label) {
+    const sched = getScheduleForDate(state.selectedDate);
+    label.textContent = `${sched.weekdayName} (${formatDateVN(state.selectedDate)}) • Ca tập: ${CLUB_SHIFT.name}`;
 
-  const sched = getScheduleForDate(state.selectedDate);
-  label.textContent = `${sched.weekdayName} (${formatDateVN(state.selectedDate)}) • Ca tập: ${CLUB_SHIFT.name}`;
+    const key = getAttendanceKey();
+    const sessionRecord = state.attendance[key] || {};
 
-  const key = getAttendanceKey();
-  const sessionRecord = state.attendance[key] || {};
+    const groups = {
+      present: { title: '✓ Có mặt', color: 'var(--present-text)', items: [] },
+      excused: { title: '⏳ Vắng có phép', color: 'var(--excused-text)', items: [] },
+      absent: { title: '✕ Vắng không phép', color: 'var(--absent-text)', items: [] },
+      unmarked: { title: '• Chưa điểm danh', color: 'var(--text-secondary)', items: [] },
+    };
 
-  const groups = {
-    present: { title: '✓ Có mặt', color: 'var(--present-text)', items: [] },
-    excused: { title: '⏳ Vắng có phép', color: 'var(--excused-text)', items: [] },
-    absent: { title: '✕ Vắng không phép', color: 'var(--absent-text)', items: [] },
-    unmarked: { title: '• Chưa điểm danh', color: 'var(--text-secondary)', items: [] },
-  };
+    state.members.forEach((m) => {
+      const st = sessionRecord[m.id]?.status || 'unmarked';
+      const note = sessionRecord[m.id]?.note || '';
+      const target = groups[st] || groups.unmarked;
+      target.items.push({ member: m, note });
+    });
 
-  state.members.forEach((m) => {
-    const st = sessionRecord[m.id]?.status || 'unmarked';
-    const note = sessionRecord[m.id]?.note || '';
-    const target = groups[st] || groups.unmarked;
-    target.items.push({ member: m, note });
+    grid.innerHTML = Object.values(groups)
+      .map(
+        (g) => `
+        <div class="report-group-card">
+          <div class="report-group-title" style="color: ${g.color}">
+            <span>${g.title}</span>
+            <span>${g.items.length} em</span>
+          </div>
+          ${
+            g.items.length === 0
+              ? `<p style="font-size: 0.8rem; color: var(--text-muted);">Không có võ sinh nào</p>`
+              : `<ul class="report-student-list">
+                  ${g.items
+                    .map(
+                      ({ member, note }) => `
+                      <li>
+                        <span><strong>${escapeHtml(member.name)}</strong></span>
+                        <span style="font-size: 0.76rem; color: var(--text-muted);">${escapeHtml(note || member.belt || '')}</span>
+                      </li>`
+                    )
+                    .join('')}
+                </ul>`
+          }
+        </div>
+      `
+      )
+      .join('');
+  }
+
+  // 2. Monthly View
+  renderMonthlyStats();
+}
+
+function computeMonthlyStats() {
+  const ym = state.selectedMonth || getTodayISO().slice(0, 7);
+  const members = [...state.members];
+
+  // All session keys in month
+  const monthSessionKeys = Object.keys(state.attendance).filter((key) => key.startsWith(ym));
+
+  const list = members.map((m) => {
+    let presentCount = 0;
+    let excusedCount = 0;
+    let absentCount = 0;
+    let totalSessionsOfMember = 0;
+
+    monthSessionKeys.forEach((key) => {
+      const record = state.attendance[key]?.[m.id];
+      if (record && record.status) {
+        totalSessionsOfMember++;
+        if (record.status === 'present') presentCount++;
+        else if (record.status === 'excused') excusedCount++;
+        else if (record.status === 'absent') absentCount++;
+      }
+    });
+
+    const rate = totalSessionsOfMember > 0 ? Math.round((presentCount / totalSessionsOfMember) * 100) : 0;
+    const tuitionStatus = getMemberTuitionStatus(m, ym);
+
+    return {
+      member: m,
+      presentCount,
+      excusedCount,
+      absentCount,
+      totalSessions: totalSessionsOfMember,
+      rate,
+      tuitionStatus,
+    };
   });
 
-  grid.innerHTML = Object.values(groups)
-    .map(
-      (g) => `
-      <div class="report-group-card">
-        <div class="report-group-title" style="color: ${g.color}">
-          <span>${g.title}</span>
-          <span>${g.items.length} em</span>
-        </div>
-        ${
-          g.items.length === 0
-            ? `<p style="font-size: 0.8rem; color: var(--text-muted);">Không có võ sinh nào</p>`
-            : `<ul class="report-student-list">
-                ${g.items
-                  .map(
-                    ({ member, note }) => `
-                    <li>
-                      <span><strong>${escapeHtml(member.name)}</strong></span>
-                      <span style="font-size: 0.76rem; color: var(--text-muted);">${escapeHtml(note || member.belt || '')}</span>
-                    </li>`
-                  )
-                  .join('')}
-              </ul>`
-        }
-      </div>
-    `
-    )
+  list.sort((a, b) => {
+    if (b.presentCount !== a.presentCount) return b.presentCount - a.presentCount;
+    if (b.rate !== a.rate) return b.rate - a.rate;
+    return getBeltRank(b.member.belt) - getBeltRank(a.member.belt);
+  });
+
+  return { ym, list, totalRecordedSessions: monthSessionKeys.length };
+}
+
+function renderMonthlyStats() {
+  const summaryCards = document.getElementById('monthlySummaryCards');
+  const tbody = document.getElementById('monthlyTableBody');
+  const monthInput = document.getElementById('monthlySelect');
+
+  if (monthInput && !monthInput.value) {
+    monthInput.value = state.selectedMonth;
+  }
+
+  if (!summaryCards || !tbody) return;
+
+  const { ym, list, totalRecordedSessions } = computeMonthlyStats();
+  const [y, m] = ym.split('-');
+
+  const perfectStudents = list.filter((item) => item.totalSessions > 0 && item.presentCount === item.totalSessions);
+  const goodStudents = list.filter((item) => item.totalSessions > 0 && item.rate >= 80 && item.presentCount !== item.totalSessions);
+  const warnStudents = list.filter((item) => item.totalSessions > 0 && item.rate < 60);
+
+  summaryCards.innerHTML = `
+    <div class="monthly-card">
+      <span class="monthly-card-title">Tổng số buổi đã tập</span>
+      <span class="monthly-card-num">${totalRecordedSessions} <small style="font-size: 0.9rem; font-weight: 600;">buổi</small></span>
+      <span class="monthly-card-sub">Trong Tháng ${Number(m)}/${y}</span>
+    </div>
+    <div class="monthly-card" style="border-left: 4px solid var(--present-solid);">
+      <span class="monthly-card-title" style="color: var(--present-text);">🏆 Đi học đủ 100%</span>
+      <span class="monthly-card-num" style="color: var(--present-text);">${perfectStudents.length} <small style="font-size: 0.9rem; font-weight: 600;">em</small></span>
+      <span class="monthly-card-sub">Chuyên cần tuyệt đối</span>
+    </div>
+    <div class="monthly-card" style="border-left: 4px solid #3b82f6;">
+      <span class="monthly-card-title" style="color: #1d4ed8;">⭐ Tỷ lệ tốt (&ge;80%)</span>
+      <span class="monthly-card-num" style="color: #1d4ed8;">${goodStudents.length} <small style="font-size: 0.9rem; font-weight: 600;">em</small></span>
+      <span class="monthly-card-sub">Chăm chỉ luyện tập</span>
+    </div>
+    <div class="monthly-card" style="border-left: 4px solid var(--absent-solid);">
+      <span class="monthly-card-title" style="color: var(--absent-text);">⚠️ Cần nhắc nhở (&lt;60%)</span>
+      <span class="monthly-card-num" style="color: var(--absent-text);">${warnStudents.length} <small style="font-size: 0.9rem; font-weight: 600;">em</small></span>
+      <span class="monthly-card-sub">Nghỉ học nhiều buổi</span>
+    </div>
+  `;
+
+  if (list.length === 0) {
+    tbody.innerHTML = `
+      <tr>
+        <td colspan="10" style="text-align: center; padding: 24px; color: var(--text-muted);">
+          Chưa có võ sinh nào trong danh sách CLB.
+        </td>
+      </tr>
+    `;
+    return;
+  }
+
+  tbody.innerHTML = list
+    .map((item, idx) => {
+      const { member, presentCount, excusedCount, absentCount, totalSessions, rate, tuitionStatus } = item;
+      let rankBadgeClass = 'rank-badge';
+      if (idx === 0) rankBadgeClass += ' rank-top1';
+      else if (idx === 1) rankBadgeClass += ' rank-top2';
+      else if (idx === 2) rankBadgeClass += ' rank-top3';
+
+      let tagHtml = '';
+      if (totalSessions === 0) {
+        tagHtml = `<span style="color: var(--text-muted); font-size: 0.78rem;">Chưa có buổi tập</span>`;
+      } else if (presentCount === totalSessions) {
+        tagHtml = `<span class="tag-perfect">🏆 Đi học 100%</span>`;
+      } else if (rate >= 80) {
+        tagHtml = `<span class="tag-good">⭐ Rất tốt (${rate}%)</span>`;
+      } else if (rate >= 60) {
+        tagHtml = `<span class="tag-warn">Khá (${rate}%)</span>`;
+      } else {
+        tagHtml = `<span class="tag-danger">⚠️ Nghỉ nhiều (${rate}%)</span>`;
+      }
+
+      const tuitionTag =
+        tuitionStatus === 'paid'
+          ? `<span class="tuition-badge tuition-paid" style="font-size: 0.74rem;">✓ Đã đóng</span>`
+          : `<span class="tuition-badge tuition-unpaid" style="font-size: 0.74rem;">⏳ Chưa đóng</span>`;
+
+      return `
+        <tr>
+          <td><span class="${rankBadgeClass}">${idx + 1}</span></td>
+          <td><strong>${escapeHtml(member.name)}</strong></td>
+          <td><span style="font-variant-numeric: tabular-nums; color: var(--text-secondary);">${escapeHtml(member.studentId || '—')}</span></td>
+          <td>${buildBeltBadgeHtml(member.belt || 'Tự vệ nhập môn')}</td>
+          <td>${tuitionTag}</td>
+          <td style="text-align: center; font-weight: 800; color: var(--present-text);">${presentCount}</td>
+          <td style="text-align: center; font-weight: 700; color: var(--excused-text);">${excusedCount}</td>
+          <td style="text-align: center; font-weight: 700; color: var(--absent-text);">${absentCount}</td>
+          <td style="text-align: center;">
+            <div style="display: flex; align-items: center; justify-content: center; gap: 6px;">
+              <span style="font-weight: 800; font-size: 0.86rem;">${rate}%</span>
+              <span style="font-size: 0.74rem; color: var(--text-muted);">(${presentCount}/${totalSessions})</span>
+            </div>
+          </td>
+          <td>${tagHtml}</td>
+          <td>
+            <input
+              type="text"
+              class="monthly-eval-input"
+              placeholder="Nhập nhận xét của HLV..."
+              value="${escapeHtml(getMemberMonthlyEval(member, ym))}"
+              data-action="monthly-eval"
+              data-id="${escapeHtml(member.id)}"
+            />
+          </td>
+        </tr>
+      `;
+    })
     .join('');
+}
+
+function exportMonthlyToXLSX() {
+  const { ym, list, totalRecordedSessions } = computeMonthlyStats();
+  if (list.length === 0) {
+    showToast('Chưa có dữ liệu võ sinh trong tháng này để xuất file!');
+    return;
+  }
+
+  const [y, m] = ym.split('-');
+
+  const rows = [
+    [{ v: 'CLB VOVINAM LẠC HỒNG - BÁO CÁO CHUYÊN CẦN THÁNG', s: 1 }],
+    [
+      { v: `Tháng: ${Number(m)}/${y}`, s: 0 },
+      { v: `Tổng số buổi tập: ${totalRecordedSessions}`, s: 0 },
+    ],
+    [],
+    [
+      { v: 'Hạng', s: 2 },
+      { v: 'Họ và tên võ sinh', s: 2 },
+      { v: 'Mã định danh', s: 2 },
+      { v: 'Cấp đai', s: 2 },
+      { v: 'SĐT Phụ huynh', s: 2 },
+      { v: 'Tình trạng học phí', s: 2 },
+      { v: 'Số buổi có mặt', s: 2 },
+      { v: 'Có phép', s: 2 },
+      { v: 'Vắng', s: 2 },
+      { v: 'Tỷ lệ chuyên cần', s: 2 },
+      { v: 'Xếp loại', s: 2 },
+      { v: 'HLV Đánh giá', s: 2 },
+    ],
+  ];
+
+  list.forEach((item, index) => {
+    const { member, presentCount, excusedCount, absentCount, totalSessions, rate, tuitionStatus } = item;
+    let evalStr = 'Chưa có buổi';
+    if (totalSessions > 0) {
+      if (presentCount === totalSessions) evalStr = 'Xuất sắc (100%)';
+      else if (rate >= 80) evalStr = 'Rất tốt';
+      else if (rate >= 60) evalStr = 'Khá';
+      else evalStr = 'Cần nhắc nhở';
+    }
+
+    const hlvComment = getMemberMonthlyEval(member, ym);
+
+    rows.push([
+      { v: index + 1, s: 3 },
+      { v: member.name, s: 3 },
+      { v: member.studentId || '', s: 3 },
+      { v: member.belt || '', s: 3 },
+      { v: member.phone || '', s: 3 },
+      { v: tuitionStatus === 'paid' ? 'Đã đóng' : 'Chưa đóng', s: 3 },
+      { v: presentCount, s: 3 },
+      { v: excusedCount, s: 3 },
+      { v: absentCount, s: 3 },
+      { v: `${rate}% (${presentCount}/${totalSessions})`, s: 3 },
+      { v: evalStr, s: 3 },
+      { v: hlvComment || '', s: 3 },
+    ]);
+  });
+
+  const blob = buildXlsxBlob(rows);
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `BaoCao_ChuyenCan_Vovinam_LacHong_${ym}.xlsx`;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+
+  showToast(`Đã tải xuống file Excel báo cáo Tháng ${Number(m)}/${y} thành công!`);
 }
 
 function renderAll() {
@@ -1429,6 +1702,46 @@ function initEvents() {
   const exportBtn2 = document.getElementById('exportXlsxBtn2');
   if (exportBtn2) {
     exportBtn2.addEventListener('click', exportToXLSX);
+  }
+
+  // Monthly stats mode & events
+  const btnStatsDaily = document.getElementById('btnStatsDailyMode');
+  const btnStatsMonthly = document.getElementById('btnStatsMonthlyMode');
+  if (btnStatsDaily && btnStatsMonthly) {
+    btnStatsDaily.addEventListener('click', () => {
+      state.statsMode = 'daily';
+      renderDetailedStatsView();
+    });
+    btnStatsMonthly.addEventListener('click', () => {
+      state.statsMode = 'monthly';
+      renderDetailedStatsView();
+    });
+  }
+
+  const monthlySelect = document.getElementById('monthlySelect');
+  if (monthlySelect) {
+    monthlySelect.value = state.selectedMonth;
+    monthlySelect.addEventListener('change', (e) => {
+      if (e.target.value) {
+        state.selectedMonth = e.target.value;
+        renderMonthlyStats();
+      }
+    });
+  }
+
+  const exportMonthlyBtn = document.getElementById('exportMonthlyXlsxBtn');
+  if (exportMonthlyBtn) {
+    exportMonthlyBtn.addEventListener('click', exportMonthlyToXLSX);
+  }
+
+  const monthlyTableBody = document.getElementById('monthlyTableBody');
+  if (monthlyTableBody) {
+    monthlyTableBody.addEventListener('input', (e) => {
+      const evalInput = e.target.closest('[data-action="monthly-eval"]');
+      if (evalInput) {
+        setMemberMonthlyEval(evalInput.dataset.id, evalInput.value);
+      }
+    });
   }
 
   // Cloud Sync Modal events

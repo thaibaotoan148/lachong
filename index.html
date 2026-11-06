@@ -16,7 +16,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="styles.css?v=20261106_m1" />
 </head>
 <body>
   <div class="bg-decor" aria-hidden="true"></div>
@@ -357,23 +357,96 @@
     <!-- VIEW 4: DETAILED STATS & SUMMARY REPORT -->
     <section class="panel stats-detail-panel hidden-view" id="view-stats-container">
       <div class="panel-header">
-        <h2 class="panel-title">Báo Cáo Chuyên Cần & Xuất File Excel (.xlsx)</h2>
-        <p class="panel-desc" id="statsSessionLabel">Tổng hợp tình hình điểm danh trong buổi tập</p>
+        <h2 class="panel-title">Báo Cáo & Thống Kê Chuyên Cần</h2>
+        <p class="panel-desc">Theo dõi chuyên cần theo từng buổi tập hoặc tổng kết cả tháng để khen thưởng võ sinh chăm chỉ</p>
       </div>
 
-      <div class="report-summary-grid" id="reportSummaryGrid">
-        <!-- Rendered by JS -->
-      </div>
-
-      <div class="report-actions-bar">
-        <button type="button" id="exportXlsxBtn2" class="btn btn-primary">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
-            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-            <polyline points="7 10 12 15 17 10"/>
-            <line x1="12" y1="15" x2="12" y2="3"/>
+      <!-- Mode Selector: Theo Buổi Tập vs Tổng Kết Cả Tháng -->
+      <div class="stats-tab-bar">
+        <button type="button" class="stats-mode-btn active" id="btnStatsDailyMode">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+            <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
+            <line x1="16" y1="2" x2="16" y2="6"/>
+            <line x1="8" y1="2" x2="8" y2="6"/>
+            <line x1="3" y1="10" x2="21" y2="10"/>
           </svg>
-          Tải xuống Báo cáo Excel (.xlsx)
+          <span>Theo Buổi Tập (<span id="statsDailyDateLabel">Hôm nay</span>)</span>
         </button>
+        <button type="button" class="stats-mode-btn" id="btnStatsMonthlyMode">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+            <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
+          </svg>
+          <span>⭐ Thống Kê Tổng Kết Tháng</span>
+        </button>
+      </div>
+
+      <!-- DAILY REPORT VIEW -->
+      <div id="statsDailyViewWrap">
+        <div class="stats-sub-header">
+          <h3 class="stats-sub-title" id="statsSessionLabel">Tổng hợp tình hình điểm danh trong buổi tập</h3>
+        </div>
+        <div class="report-summary-grid" id="reportSummaryGrid">
+          <!-- Rendered by JS -->
+        </div>
+
+        <div class="report-actions-bar">
+          <button type="button" id="exportXlsxBtn2" class="btn btn-primary">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+              <polyline points="7 10 12 15 17 10"/>
+              <line x1="12" y1="15" x2="12" y2="3"/>
+            </svg>
+            Tải xuống Báo cáo buổi tập (.xlsx)
+          </button>
+        </div>
+      </div>
+
+      <!-- MONTHLY REPORT VIEW -->
+      <div id="statsMonthlyViewWrap" class="hidden">
+        <div class="monthly-control-bar">
+          <div class="monthly-filter-group">
+            <label for="monthlySelect">Chọn tháng tổng kết:</label>
+            <input type="month" id="monthlySelect" class="monthly-input" />
+          </div>
+
+          <button type="button" id="exportMonthlyXlsxBtn" class="btn btn-primary monthly-export-btn">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+              <polyline points="7 10 12 15 17 10"/>
+              <line x1="12" y1="15" x2="12" y2="3"/>
+            </svg>
+            Xuất Báo Cáo Tháng (.xlsx)
+          </button>
+        </div>
+
+        <!-- Monthly Overview Highlights -->
+        <div class="monthly-summary-cards" id="monthlySummaryCards">
+          <!-- Rendered by JS -->
+        </div>
+
+        <!-- Monthly Ranking & Attendance Table -->
+        <div class="monthly-table-responsive">
+          <table class="monthly-table" id="monthlyStatsTable">
+            <thead>
+              <tr>
+                <th style="width: 50px;">Hạng</th>
+                <th>Võ sinh</th>
+                <th>Mã ĐD</th>
+                <th>Cấp đai</th>
+                <th>Học phí</th>
+                <th style="text-align: center;">Có mặt</th>
+                <th style="text-align: center;">Có phép</th>
+                <th style="text-align: center;">Vắng</th>
+                <th style="text-align: center;">Tỷ lệ chuyên cần</th>
+                <th>Xếp loại</th>
+                <th>HLV Đánh giá</th>
+              </tr>
+            </thead>
+            <tbody id="monthlyTableBody">
+              <!-- Rendered by JS -->
+            </tbody>
+          </table>
+        </div>
       </div>
     </section>
   </main>
@@ -419,6 +492,6 @@
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
-  <script src="app.js"></script>
+  <script src="app.js?v=20261106_m1"></script>
 </body>
 </html>
